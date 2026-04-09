@@ -54,7 +54,7 @@ def today():
 
 @app.route("/me")
 def me():
-    return render_template("mis2026b.html")
+    return render_template("mis2026B.html")
 
 @app.route("/welcome", methods=["GET"])
 def welcome():
