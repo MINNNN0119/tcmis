@@ -1,3 +1,6 @@
+import requests
+from bs4 import BeautifulSoup
+
 from flask import Flask, render_template, request
 from datetime import datetime
 
@@ -31,7 +34,22 @@ def index():
     link += "<a href=/calculate>次方與根號計算</a><hr>"
     link += "<a href=/read>讀取Firestore資料</a><hr>"
     link += "<a href=/read2>讀取Firestore資料(根據姓名關鍵字)</a><hr>"
+    link += "<a href=/spider1>爬取子青老師本學期課程</a><hr>"
     return link
+
+@app.route("/spider1")
+def spider1():
+    R = ""
+    url = "https://www1.pu.edu.tw/~tcyang/course.html"
+    Data = requests.get(url)
+    Data.encoding = "utf-8"
+    #print(Data.text)
+    sp = BeautifulSoup(Data.text, "html.parser")
+    result=sp.select(".team-box a")
+
+    for i in result:
+        R += i.text + i.get("href") + "<br>"
+    return R
 
 @app.route("/read2", methods=["GET", "POST"])
 def read2():
