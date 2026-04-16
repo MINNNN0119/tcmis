@@ -30,8 +30,24 @@ def index():
     link += "<a href=/welcome?u=彥閔&d=靜宜資管&c=資訊管理導論>Get傳值</a><hr>"
     link += "<a href=/calculate>次方與根號計算</a><hr>"
     link += "<a href=/read>讀取Firestore資料</a><hr>"
-
+    link += "<a href=/read2>讀取Firestore資料(根據姓名關鍵字:楊)</a><hr>"
     return link
+
+@app.route("/read2")
+def read2():
+    Result = ""
+    keyword ="楊"
+    db = firestore.client()
+    collection_ref = db.collection("靜宜資管") 
+    docs = collection_ref.get()
+    for doc in docs: 
+        teacher = doc.to_dict()
+    if keyword in teacher["name"]:        
+        Result += str(doc.to_dict()) + "<br>"
+
+    if Result == "":
+        Result = "抱歉，查無此關鍵字姓名之老師資料"   
+    return Result
 
 @app.route("/read")
 def read():
