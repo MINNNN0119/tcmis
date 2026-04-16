@@ -30,9 +30,9 @@ def index():
     link += "<a href=/welcome?u=彥閔&d=靜宜資管&c=資訊管理導論>Get傳值</a><hr>"
     link += "<a href=/calculate>次方與根號計算</a><hr>"
     link += "<a href=/read>讀取Firestore資料</a><hr>"
-    link += "<a href=/read2>讀取Firestore資料(根據姓名關鍵字:楊)</a><hr>"
+    link += "<a href=/read2>讀取Firestore資料(根據姓名關鍵字)</a><hr>"
     return link
-    
+
 @app.route("/read2", methods=["GET", "POST"])
 def read2():
     Result = "請輸入關鍵字<br>"
@@ -43,15 +43,14 @@ def read2():
     </form><br>
     """
     
-    keyword = request.form.get("keyword") # 改成抓取輸入的字
+    keyword = request.form.get("keyword")
     db = firestore.client()
     collection_ref = db.collection("靜宜資管")
-    # 這裡也幫你加了降冪排序
     docs = collection_ref.order_by("lab", direction=firestore.Query.DESCENDING).get()
     
-    found = False  # <--- 加這行：先假設沒找到
+    found = False
     
-    if keyword: # 如果有輸入字才執行搜尋
+    if keyword:
         for doc in docs:
             teacher = doc.to_dict()
             if keyword in teacher["name"]:
@@ -60,6 +59,8 @@ def read2():
         
         if not found:
             Result += "抱歉，查無此關鍵字相關之老師資料"
+
+    Result += '<br><a href="/">返回首頁</a>'
             
     return Result
 
