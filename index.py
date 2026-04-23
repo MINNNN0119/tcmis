@@ -38,59 +38,46 @@ def index():
     link += "<a href=/movie1>爬取即將上映電影</a><hr>"
     return link
 
-@app.route("/search", methods=["GET", "POST"])
-def search():
-    # 1. 建立搜尋表單介面
-    html_form = """
-    <form method="POST" action="/search">
-        <h2>電影搜尋系統</h2>
-        請輸入片名關鍵字：<input type="text" name="keyword">
-        <input type="submit" value="開始搜尋">
+@app.route("/movie1", methods=["GET", "POST"])
+def movie1():
+    # 建立搜尋表單
+    R = """
+    <form method="POST" action="/movie1">
+        <p>請輸入電影關鍵字：<input type="text" name="keyword"></p>
+        <button type="submit">開始搜尋</button>
     </form>
     <hr>
     """
     
-    if request.method == "POST":
-        keyword = request.form.get("keyword")
-        R = f"<h3>「{keyword}」的搜尋結果：</h3>"
-        
-        # 2. 開始爬蟲
-        url = "http://www.atmovies.com.tw/movie/next/"
-        Data = requests.get(url)
-        Data.encoding = "utf-8"
-        sp = BeautifulSoup(Data.text, "html.parser")
-        result = sp.select(".filmListAllX li")
-        
-        found_count = 0
-        for item in result:
-            try:
-                img_tag = item.find("img")
-                name = img_tag.get("alt") # 取得片名
-                
-                # 3. 關鍵字過濾判斷
-                if keyword in name:
-                    found_count += 1
-                    # 取得介紹頁連結
-                    intro_link = "https://www.atmovies.com.tw" + item.find("a").get("href")
-                    # 取得海報圖片網址
-                    img_src = "https://www.atmovies.com.tw" + img_tag.get("src")
-                    
-                    # 4. 組合 HTML：包含超連結與圖片標籤
-                    R += f'<div>'
-                    R += f'  <h4><a href="{intro_link}" target="_blank">{name}</a></h4>'
-                    R += f'  <img src="{img_src}" width="150" style="border:1px solid #ccc;"><br>'
-                    R += f'</div><hr>'
-            except:
-                continue
-        
-        if found_count == 0:
-            R += "<p>找不到相關電影，請換個關鍵字試試看！</p>"
+    # 爬取資料
+    url = "http://www.atmovies.com.tw/movie/next/"
+    Data = requests.get(url)
+    Data.encoding = "utf-8"
+    sp = BeautifulSoup(Data.text, "html.parser")
+    result = sp.select(".filmListAllX li")
+
+    # 取得使用者輸入的關鍵字 (如果是 GET 請求，則為 None)
+    keyword = request.form.get("keyword") if request.method == "POST" else ""
+
+    for item in result:
+        try:
+            img_tag = item.find("img")
+            name = img_tag.get("alt") # 電影名稱
             
-        return html_form + R
-
-    # GET 請求時只顯示搜尋框
-    return html_form
-
+            # 判斷邏輯：如果有輸入關鍵字，就過濾；沒輸入就顯示全部
+            if not keyword or keyword in name:
+                # 取得介紹頁連結
+                link = "https://www.atmovies.com.tw" + item.find("a").get("href")
+                # 取得海報圖片網址
+                img_url = "https://www.atmovies.com.tw" + img_tag.get("src")
+                
+                # 組合 HTML：<a> 是連結，<img> 是圖片
+                R += f'<h3><a href="{link}" target="_blank">{name}</a></h3>'
+                R += f'<img src="{img_url}" width="200"><br><hr>'
+        except:
+            continue
+            
+    return R
 
 @app.route("/spider1")
 def spider1():
