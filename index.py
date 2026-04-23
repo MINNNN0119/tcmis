@@ -38,20 +38,53 @@ def index():
     link += "<a href=/movie1>爬取即將上映電影</a><hr>"
     return link
 
-@app.route("/movie1")
-def movie():
-    R = ""
-    url = "http://www.atmovies.com.tw/movie/next/"
-    Data = requests.get(url)
-    Data.encoding = "utf-8"
-    #print(Data.text)
-    sp = BeautifulSoup(Data.text, "html.parser")
-    result=sp.select(".filmListAllX li")
-    for item in result:
-        introduce = "https://www.atmovies.com.tw" + item.find("a").get("href")
-        R += "<a href=" + introduce + ">" +  item.find("img").get("alt") + "<a><br>"
-        R += "https://www.atmovies.com.tw"+  item.find("img").get("src") + "<br><br>"
-    return R
+@app.route("/search_movie", methods=["GET", "POST"])
+def search_movie():
+    # 建立基本的搜尋表單介面
+    html_form = """
+    <form method="POST" action="/search_movie">
+        請輸入電影關鍵字：<input type="text" name="keyword">
+        <input type="submit" value="搜尋">
+    </form>
+    <hr>
+    """
+    
+    if request.method == "POST":
+        keyword = request.form.get("keyword")
+        if not keyword:
+            return html_form + "請輸入關鍵字後再搜尋！"
+            
+        R = f"<h2>符合「{keyword}」的搜尋結果：</h2>"
+        url = "http://www.atmovies.com.tw/movie/next/"
+        data = requests.get(url)
+        data.encoding = "utf-8"
+        sp = BeautifulSoup(data.text, "html.parser")
+        result = sp.select(".filmListAllX li")
+        
+        found = False
+        for item in result:
+            try:
+                # 抓取片名與連結
+                img_tag = item.find("img")
+                name = img_tag.get("alt")
+                link = "https://www.atmovies.com.tw" + item.find("a").get("href")
+                img_url = "https://www.atmovies.com.tw" + img_tag.get("src")
+                
+                # 判斷關鍵字是否在片名中
+                if keyword in name:
+                    found = True
+                    R += f'<h3><a href="{link}" target="_blank">{name}</a></h3>'
+                    R += f'<img src="{img_url}" width="200"><br><hr>'
+            except:
+                continue
+        
+        if not found:
+            R += "找不到符合條件的電影。"
+            
+        return html_form + R
+    
+    # 如果是 GET 請求，只顯示表單
+    return html_form
 
 @app.route("/spider1")
 def spider1():
