@@ -36,7 +36,102 @@ def index():
     link += "<a href=/read2>讀取Firestore資料(根據姓名關鍵字)</a><hr>"
     link += "<a href=/spider1>爬取子青老師本學期課程</a><hr>"
     link += "<a href=/movie1>爬取即將上映電影</a><hr>"
+    link += "<a href=/spiderMovie>查看日期以及爬取即將上映電影</a><hr>"
+    link += "<a href=/searchMovie>透過資料庫搜尋即將上映電影</a><hr>"
     return link
+
+@app.route("/searchMovie", methods=["GET", "POST"])
+def searchMovie():
+    # 搜尋表單
+    R = """
+    <h1>搜尋資料庫電影</h1>
+    <form method="POST" action="/searchMovie">
+        <p>請輸入電影片名關鍵字：<input type="text" name="keyword"></p>
+        <button type="submit">從資料庫查詢</button>
+    </form>
+    <hr>
+    """
+    
+    if request.method == "POST":
+        keyword = request.form.get("keyword")
+        db = firestore.client()
+        # 取得「電影2B」集合中所有的文件
+        collection_ref = db.collection("電影2B")
+        docs = collection_ref.get()
+        
+        found = False
+        count = 0
+        for doc in docs:
+            movie = doc.to_dict()
+            title = movie.get("title", "")
+            
+            # 判斷片名是否包含關鍵字
+            if keyword in title:
+                found = True
+                count += 1
+                movie_id = doc.id
+                picture = movie.get("picture")
+                hyperlink = movie.get("hyperlink")
+                showDate = movie.get("showDate")
+                
+                # 按照要求列出：編號, 片名, 海報, 介紹頁及上映日期
+                R += f"<b>編號：</b>{movie_id}<br>"
+                R += f"<b>片名：</b>{title}<br>"
+                R += f"<b>上映日期：</b>{showDate}<br>"
+                R += f'<a href="{hyperlink}" target="_blank">點我查看介紹頁</a><br>'
+                R += f'<img src="{picture}" width="200"><br><hr>'
+        
+        if not found:
+            R += f"<p>抱歉，資料庫中找不到包含「{keyword}」的電影。</p>"
+        else:
+            R += f"<p>共找到 {count} 部符合條件的電影</p>"
+
+    R += '<a href="/">返回首頁</a>'
+    return R
+
+@app.route("/spiderMovie")
+def spiderMovie():
+    R=""
+
+    db = firestore.client()
+
+    url = "http://www.atmovies.com.tw/movie/next/"
+    Data = requests.get(url)
+    Data.encoding = "utf-8"
+    sp = BeautifulSoup(Data.text, "html.parser")
+    lastUpdate = sp.find(class_="smaller09").text.replace("更新時間：", "")
+
+
+    result=sp.select(".filmListAllX li")
+    info = ""
+    total = 0
+    for item in result:
+        total += 1
+        movie_id = item.find("a").get("href").replace("/movie/", "").replace("/", "")
+        title = item.find(class_="filmtitle").text
+        picture = "http://www.atmovies.com.tw" + item.find("img").get("src")
+        hyperlink = "http://www.atmovies.com.tw" + item.find("a").get("href")
+                  
+        showDate = item.find(class_="runtime").text[5:15]
+        info += movie_id + "\n" + title + "\n" 
+        info += picture + "\n" + hyperlink + "\n" + showDate + "\n\n"
+
+        doc = {
+        "title": title,
+        "picture": picture,
+        "hyperlink": hyperlink,
+        "showDate": showDate,
+        "lastUpdate": lastUpdate
+        }
+        doc_ref = db.collection("電影2B").document(movie_id)
+        doc_ref.set(doc)
+
+        #print(info)
+    R += "網站最近更新日期" + lastUpdate + "<br>" 
+    R +=("總共爬取" + str(total) + "部電影到資料庫")
+        
+        
+    return R
 
 @app.route("/movie1", methods=["GET", "POST"])
 def movie1():
