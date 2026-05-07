@@ -43,19 +43,30 @@ def index():
 
 @app.route("/road")
 def road():
-    R = "</h1>台中市十大肇事路口(113年10月)</h1><br>"
+    R = "<h1>台中市十大肇事路口 (113年10月)</h1><br>"
     
-
-    url = "https://datacenter.taichung.gov.tw/swagger/OpenData/a1b899c0-511f-4e3d-b22b-814982a97e41"
-    Data = requests.get(url)
-    #print(Data.text)
-    JsonData = json.loads(Data.text)
-    for item in JsonData:
-        R += item["路口名稱"] + ",原因:" + item["主要肇因"] + ",件數:" + item["總件數"] + "<br>"
+    url = "https://taichung.gov.tw"
+    
+    # 1. 加上 headers 避免被網站封鎖 (這是你之前遇到 Connection aborted 的主因)
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+    
+    try:
+        Data = requests.get(url, headers=headers)
+        JsonData = Data.json() # 直接用 .json() 更方便
         
+        for item in JsonData:
+            # 2. 改用 .get() 取值。如果名稱不對，會顯示 "無資料" 而不會報 500 錯誤
+            # 同時確認你的 JSON 欄位名稱是否正確 (可先用 print(item) 檢查)
+            location = item.get("路口名稱", "未知路口")
+            reason = item.get("主要肇因", item.get("肇因", "原因不明")) # 嘗試抓取可能的名字
+            count = item.get("總件數", item.get("件數", "0"))
+            
+            R += f"{location}，原因：{reason}，件數：{count}<br>"
+            
+    except Exception as e:
+        return f"讀取資料發生錯誤：{e}"
 
     return R
-
 
 
 @app.route("/searchMovie", methods=["GET", "POST"])
