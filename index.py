@@ -1,26 +1,25 @@
 import requests
 from bs4 import BeautifulSoup
-
 from flask import Flask, render_template, request
 from datetime import datetime
-
 import os
 import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# 判斷是在 Vercel 還是本地
+# --- 1. Firebase 初始化 ---
 if os.path.exists('serviceAccountKey.json'):
-    # 本地環境：讀取檔案
+    # 本地環境
     cred = credentials.Certificate('serviceAccountKey.json')
 else:
-    # 雲端環境：從環境變數讀取 JSON 字串
+    # 雲端環境 (Vercel)
     firebase_config = os.getenv('FIREBASE_CONFIG')
     cred_dict = json.loads(firebase_config)
     cred = credentials.Certificate(cred_dict)
 
-firebase_admin.initialize_app(cred)
-
+# 避免重複初始化
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
 
 app = Flask(__name__)
 
@@ -39,6 +38,7 @@ def index():
     link += "<a href=/spiderMovie>查看日期以及爬取即將上映電影</a><hr>"
     link += "<a href=/searchMovie>透過資料庫搜尋即將上映電影</a><hr>"
     link += "<a href=/road>台中市十大肇事路口</a><hr>"
+    link += "<a href=/weather>讀取各縣市天氣</a><hr>" # 天氣查詢連結
     return link
 
 @app.route("/road")
@@ -68,71 +68,64 @@ def road():
 
     return R
 
+# --- 3. 天氣查詢功能 ---
+@app.route("/weather")
+def weather_query():
+    city = request.args.get("city", "")
+    ui = """
+    <h2>各縣市天氣查詢</h2>
+    <form action="/weather" method="get">
+        請輸入縣市名稱：<input type="text" name="city" placeholder="例如：臺中市">
+        <input type="submit" value="查詢">
+    </form>
+    <br><a href="/">回首頁</a><hr>
+    """
+    if city:
+        city_fixed = city.replace("台", "臺")
+        url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization=rdec-key-123-45678-011121314&format=JSON&locationName={city_fixed}"
+        try:
+            res = requests.get(url).json()
+            if res.get("records") and res["records"].get("location"):
+                loc = res["records"]["location"][0]
+                wx = loc["weatherElement"][0]["time"][0]["parameter"]["parameterName"]
+                pop = loc["weatherElement"][1]["time"][0]["parameter"]["parameterName"]
+                ui += f"<h3>{city_fixed} 的預報結果：</h3>"
+                ui += f"目前天氣：{wx}<br>"
+                ui += f"降雨機率：{pop}%"
+            else:
+                ui += f"<p style='color:red;'>找不到「{city}」的資料，請輸入完整名稱（如：臺中市）。</p>"
+        except Exception as e:
+            ui += f"<p style='color:red;'>連線錯誤：{str(e)}</p>"
+    return ui
 
+# --- 4. 電影搜尋與爬蟲功能 ---
 @app.route("/searchMovie", methods=["GET", "POST"])
 def searchMovie():
-    # 搜尋表單
-    R = """
-    <h1>搜尋資料庫電影</h1>
-    <form method="POST" action="/searchMovie">
-        <p>請輸入電影片名關鍵字：<input type="text" name="keyword"></p>
-        <button type="submit">從資料庫查詢</button>
-    </form>
-    <hr>
-    """
-    
+    R = "<h1>搜尋資料庫電影</h1><form method='POST' action='/searchMovie'><p>請輸入片名關鍵字：<input type='text' name='keyword'></p><button type='submit'>從資料庫查詢</button></form><hr>"
     if request.method == "POST":
         keyword = request.form.get("keyword")
         db = firestore.client()
-        # 取得「電影2B」集合中所有的文件
-        collection_ref = db.collection("電影2B")
-        docs = collection_ref.get()
-        
-        found = False
-        count = 0
+        docs = db.collection("電影2B").get()
+        found, count = False, 0
         for doc in docs:
             movie = doc.to_dict()
-            title = movie.get("title", "")
-            
-            # 判斷片名是否包含關鍵字
-            if keyword in title:
-                found = True
-                count += 1
-                movie_id = doc.id
-                picture = movie.get("picture")
-                hyperlink = movie.get("hyperlink")
-                showDate = movie.get("showDate")
-                
-                # 按照要求列出：編號, 片名, 海報, 介紹頁及上映日期
-                R += f"<b>編號：</b>{movie_id}<br>"
-                R += f"<b>片名：</b>{title}<br>"
-                R += f"<b>上映日期：</b>{showDate}<br>"
-                R += f'<a href="{hyperlink}" target="_blank">點我查看介紹頁</a><br>'
-                R += f'<img src="{picture}" width="200"><br><hr>'
-        
-        if not found:
-            R += f"<p>抱歉，資料庫中找不到包含「{keyword}」的電影。</p>"
-        else:
-            R += f"<p>共找到 {count} 部符合條件的電影</p>"
-
+            if keyword in movie.get("title", ""):
+                found, count = True, count + 1
+                R += f"<b>編號：</b>{doc.id}<br><b>片名：</b>{movie.get('title')}<br><b>上映日期：</b>{movie.get('showDate')}<br><a href='{movie.get('hyperlink')}' target='_blank'>查看介紹</a><br><img src='{movie.get('picture')}' width='200'><br><hr>"
+        if not found: R += f"<p>找不到「{keyword}」相關電影</p>"
+        else: R += f"<p>共找到 {count} 部電影</p>"
     R += '<a href="/">返回首頁</a>'
     return R
 
 @app.route("/spiderMovie")
 def spiderMovie():
-    R=""
-
     db = firestore.client()
-
     url = "http://www.atmovies.com.tw/movie/next/"
-    Data = requests.get(url)
-    Data.encoding = "utf-8"
-    sp = BeautifulSoup(Data.text, "html.parser")
+    res = requests.get(url)
+    res.encoding = "utf-8"
+    sp = BeautifulSoup(res.text, "html.parser")
     lastUpdate = sp.find(class_="smaller09").text.replace("更新時間：", "")
-
-
-    result=sp.select(".filmListAllX li")
-    info = ""
+    result = sp.select(".filmListAllX li")
     total = 0
     for item in result:
         total += 1
@@ -140,133 +133,48 @@ def spiderMovie():
         title = item.find(class_="filmtitle").text
         picture = "http://www.atmovies.com.tw" + item.find("img").get("src")
         hyperlink = "http://www.atmovies.com.tw" + item.find("a").get("href")
-                  
         showDate = item.find(class_="runtime").text[5:15]
-        info += movie_id + "\n" + title + "\n" 
-        info += picture + "\n" + hyperlink + "\n" + showDate + "\n\n"
+        db.collection("電影2B").document(movie_id).set({
+            "title": title, "picture": picture, "hyperlink": hyperlink, "showDate": showDate, "lastUpdate": lastUpdate
+        })
+    return f"網站更新日期：{lastUpdate}<br>總共爬取 {total} 部電影到資料庫"
 
-        doc = {
-        "title": title,
-        "picture": picture,
-        "hyperlink": hyperlink,
-        "showDate": showDate,
-        "lastUpdate": lastUpdate
-        }
-        doc_ref = db.collection("電影2B").document(movie_id)
-        doc_ref.set(doc)
-
-        #print(info)
-    R += "網站最近更新日期" + lastUpdate + "<br>" 
-    R +=("總共爬取" + str(total) + "部電影到資料庫")
-        
-        
-    return R
-
-@app.route("/movie1", methods=["GET", "POST"])
-def movie1():
-    # 建立搜尋表單
-    R = """
-    <form method="POST" action="/movie1">
-        <p>請輸入電影關鍵字：<input type="text" name="keyword"></p>
-        <button type="submit">開始搜尋</button>
-    </form>
-    <hr>
-    """
-    
-    # 爬取資料
-    url = "http://www.atmovies.com.tw/movie/next/"
-    Data = requests.get(url)
-    Data.encoding = "utf-8"
-    sp = BeautifulSoup(Data.text, "html.parser")
-    result = sp.select(".filmListAllX li")
-
-    # 取得使用者輸入的關鍵字 (如果是 GET 請求，則為 None)
-    keyword = request.form.get("keyword") if request.method == "POST" else ""
-
-    for item in result:
-        try:
-            img_tag = item.find("img")
-            name = img_tag.get("alt") # 電影名稱
-            
-            # 判斷邏輯：如果有輸入關鍵字，就過濾；沒輸入就顯示全部
-            if not keyword or keyword in name:
-                # 取得介紹頁連結
-                link = "https://www.atmovies.com.tw" + item.find("a").get("href")
-                # 取得海報圖片網址
-                img_url = "https://www.atmovies.com.tw" + img_tag.get("src")
-                
-                # 組合 HTML：<a> 是連結，<img> 是圖片
-                R += f'<h3><a href="{link}" target="_blank">{name}</a></h3>'
-                R += f'<img src="{img_url}" width="200"><br><hr>'
-        except:
-            continue
-            
-    return R
-
-@app.route("/spider1")
-def spider1():
-    R = ""
-    url = "https://www1.pu.edu.tw/~tcyang/course.html"
-    Data = requests.get(url)
-    Data.encoding = "utf-8"
-    #print(Data.text)
-    sp = BeautifulSoup(Data.text, "html.parser")
-    result=sp.select(".team-box a")
-
-    for i in result:
-        R += i.text + i.get("href") + "<br>"
-    return R
-
+# --- 5. 其他輔助功能 (Firestore 讀取、計算機等) ---
 @app.route("/read2", methods=["GET", "POST"])
 def read2():
-    Result = "請輸入關鍵字<br>"
-    Result += """
-    <form method="POST" action="/read2">
-        <input type="text" name="keyword">
-        <input type="submit" value="查詢">
-    </form><br>
-    """
-    
+    Result = "請輸入關鍵字<br><form method='POST' action='/read2'><input type='text' name='keyword'><input type='submit' value='查詢'></form><br>"
     keyword = request.form.get("keyword")
-    db = firestore.client()
-    collection_ref = db.collection("靜宜資管")
-    docs = collection_ref.order_by("lab", direction=firestore.Query.DESCENDING).get()
-    
-    found = False
-    
     if keyword:
+        db = firestore.client()
+        docs = db.collection("靜宜資管").get()
+        found = False
         for doc in docs:
             teacher = doc.to_dict()
             if keyword in teacher["name"]:
                 Result += str(teacher) + "<br>"
                 found = True
-        
-        if not found:
-            Result += "抱歉，查無此關鍵字相關之老師資料"
-
+        if not found: Result += "查無老師資料"
     Result += '<br><a href="/">返回首頁</a>'
-            
     return Result
 
-
-@app.route("/read")
-def read():
-    Result = ""
-    db = firestore.client()
-    collection_ref = db.collection("靜宜資管") 
-    docs = collection_ref.order_by("lab",direction=firestore.Query.DESCENDING).get()
-    for doc in docs:         
-        Result += str(doc.to_dict()) + "<br>"    
-    return Result
-
-@app.route("/mis")
-def course():
-    return "<h1>資訊管理導論</h1><a href=/>返回首頁</a>"
+@app.route("/calculate", methods=["GET", "POST"])
+def calculate():
+    if request.method == "POST":
+        x, y = float(request.form.get("x")), float(request.form.get("y"))
+        opt = request.form.get("opt")
+        if opt == "次方": res = x ** y
+        else: res = "錯誤" if x < 0 and y % 2 == 0 else x ** (1/y)
+        return f"<h1>計算結果：{res}</h1><br><a href='/calculate'>重新計算</a>"
+    return """<h1>次方與根號計算</h1><form method="post">x: <input type="number" step="any" name="x"><select name="opt"><option value="次方">次方</option><option value="根號">根號</option></select>y: <input type="number" step="any" name="y"><button type="submit">計算</button></form><br><a href="/">返回首頁</a>"""
 
 @app.route("/today")
 def today():
     now = datetime.now()
     return render_template("today.html", datetime=str(now))
+
+@app.route("/mis")
+def course():
+    return "<h1>資訊管理導論</h1><a href=/>返回首頁</a>"
 
 @app.route("/me")
 def me():
@@ -274,57 +182,9 @@ def me():
 
 @app.route("/welcome", methods=["GET"])
 def welcome():
-    user = request.values.get("u")
-    d = request.values.get("d")
-    c = request.values.get("c")
+    user, d, c = request.values.get("u"), request.values.get("d"), request.values.get("c")
     return render_template("welcome.html", name=user, dep=d, course=c)
 
-@app.route("/account", methods=["GET", "POST"])
-def account():
-    if request.method == "POST":
-        user = request.form["user"]
-        pwd = request.form["pwd"]
-        result = "您輸入的帳號是：" + user + "；密碼為：" + pwd
-        return result
-    else:
-        return render_template("account.html")
-
-@app.route("/calculate", methods=["GET", "POST"])
-def calculate():
-    if request.method == "POST":
-        x = float(request.form.get("x"))
-        opt = request.form.get("opt")
-        y = float(request.form.get("y"))
-        
-        if opt == "次方":
-            res = x ** y
-            result_str = f"{x} 的 {y} 次方 = {res}"
-        elif opt == "根號":
-            if x < 0 and y % 2 == 0:
-                result_str = "錯誤：負數不能開偶數次方根"
-            else:
-                res = x ** (1/y)
-                result_str = f"{x} 的 {y} 次方根 = {res}"
-        else:
-            result_str = "無效的運算"
-            
-        return f"<h1>計算結果</h1><p>{result_str}</p><a href='/calculate'>重新計算</a>"
-
-    html_form = """
-    <h1>次方與根號計算</h1>
-    <form method="post">
-        x: <input type="number" step="any" name="x" required><br>
-        運算: 
-        <select name="opt">
-            <option value="次方">次方</option>
-            <option value="根號">根號</option>
-        </select><br>
-        y: <input type="number" step="any" name="y" required><br>
-        <button type="submit">計算</button>
-    </form>
-    <br><a href="/">返回首頁</a>
-    """
-    return html_form
-
+# --- 6. 啟動伺服器 ---
 if __name__ == "__main__":
     app.run(debug=True)
