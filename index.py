@@ -43,7 +43,7 @@ def index():
 
 @app.route("/road")
 def road():
-    R = "<h1>台中市十大肇事路口 (113年10月)</h1><br>"
+    R = "<h1>台中市十大肇事路口 (113年10月)作者:陳彥閔</h1><br>"
     
     url = "https://taichung.gov.tw"
     
