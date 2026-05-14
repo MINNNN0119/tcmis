@@ -45,23 +45,37 @@ def index():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    # 建立 request 物件
     req = request.get_json(force=True)
+    
+    # 從 JSON 中獲取 action 資訊
     action = req["queryResult"]["action"]
     
     if action == "rateChoice":
-        # 取得使用者選擇的分級 (例如: 保護級)
+        # 取得使用者選擇的分級參數
         rate = req["queryResult"]["parameters"]["rate"]
         
-        # 呼叫爬蟲函式
-        movies = get_movies_by_rate(rate)
+        # 連結 Firestore 資料庫
+        db = firestore.client()
         
-        if movies:
-            movie_names = "、".join(movies)
-            info = f"本週上映的{rate}電影有：{movie_names}"
+        # 直接使用傳入的 rate 查詢集合「本週新片含分級」
+        docs = db.collection("本週新片含分級").where("rate", "==", rate).get()
+        
+        movie_list = []
+        for doc in docs:
+            movie_data = doc.to_dict()
+            movie_list.append(movie_data.get("title"))
+        
+        # 組合回傳訊息
+        if movie_list:
+            movie_names = "、".join(movie_list)
+            info = f"我是陳彥閔設計的機器人，本週上映的{rate}電影有：{movie_names}"
         else:
-            info = f"抱歉，本週目前沒有{rate}的電影上映中。"
+            info = f"我是陳彥閔設計的機器人，抱歉，資料庫目前沒有{rate}的電影資料。"
             
         return make_response(jsonify({"fulfillmentText": info}))
+
+    return make_response(jsonify({"fulfillmentText": "無效的 Action 請求。"}))
 
 @app.route("/rate")
 def rate():
