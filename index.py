@@ -45,18 +45,23 @@ def index():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # build a request object
     req = request.get_json(force=True)
-    # fetch queryResult from json
-    action =  req["queryResult"]["action"]
-    #msg =  req["queryResult"]["queryText"]
-    #info = "我是楊子青設計的機器人,動作：" + action + "； 查詢內容：" + msg
-
-    if (action == "rateChoice"):
-        rate =  req["queryResult"]["parameters"]["rate"]
-        info = "我是陳彥閔設計的機器人您選擇的電影分級是：" + rate
-
-    return make_response(jsonify({"fulfillmentText": info}))
+    action = req["queryResult"]["action"]
+    
+    if action == "rateChoice":
+        # 取得使用者選擇的分級 (例如: 保護級)
+        rate = req["queryResult"]["parameters"]["rate"]
+        
+        # 呼叫爬蟲函式
+        movies = get_movies_by_rate(rate)
+        
+        if movies:
+            movie_names = "、".join(movies)
+            info = f"本週上映的{rate}電影有：{movie_names}"
+        else:
+            info = f"抱歉，本週目前沒有{rate}的電影上映中。"
+            
+        return make_response(jsonify({"fulfillmentText": info}))
 
 @app.route("/rate")
 def rate():
