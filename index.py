@@ -69,9 +69,9 @@ def webhook():
         # 組合回傳訊息
         if movie_list:
             movie_names = "、".join(movie_list)
-            info = f"我是吳育安設計的機器人，本週上映的{rate}電影有：{movie_names}"
+            info = f"我是馬崇恩設計的機器人，本週上映的{rate}電影有：{movie_names}"
         else:
-            info = f"我是吳育安設計的機器人，抱歉，資料庫目前沒有{rate}的電影資料。"
+            info = f"我是馬崇恩設計的機器人，抱歉，資料庫目前沒有{rate}的電影資料。"
             
         return make_response(jsonify({"fulfillmentText": info}))
 
