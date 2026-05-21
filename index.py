@@ -23,6 +23,11 @@ if not firebase_admin._apps:
 
 app = Flask(__name__)
 
+@app.route("/webdemo")
+def webdemo():
+    return render_template("webdemo.html")
+
+
 @app.route("/")
 def index():
     link = "<h1>歡迎進入陳彥閔的網站20260409</h1>"
@@ -40,6 +45,7 @@ def index():
     link += "<a href=/road>台中市十大肇事路口</a><hr>"
     link += "<a href=/weather>讀取各縣市天氣</a><hr>"
     link += "<a href=/rate>本周新片進DB</a><hr>"
+    link += "<a href=/webdemo>聊天機器人</a><hr>"
     return link
 
 
@@ -69,9 +75,9 @@ def webhook():
         # 組合回傳訊息
         if movie_list:
             movie_names = "、".join(movie_list)
-            info = f"我是馬崇恩設計的機器人，本週上映的{rate}電影有：{movie_names}"
+            info = f"我是陳彥閔設計的機器人，本週上映的{rate}電影有：{movie_names}"
         else:
-            info = f"我是馬崇恩設計的機器人，抱歉，資料庫目前沒有{rate}的電影資料。"
+            info = f"我是陳彥閔設計的機器人，抱歉，資料庫目前沒有{rate}的電影資料。"
             
         return make_response(jsonify({"fulfillmentText": info}))
 
